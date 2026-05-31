@@ -1,0 +1,40 @@
+diff --git a/src/nvidia/src/kernel/gpu/bus/arch/hopper/kern_bus_gh100.c b/src/nvidia/src/kernel/gpu/bus/arch/hopper/kern_bus_gh100.c
+index baf2dc82..5830a5de 100644
+--- a/src/nvidia/src/kernel/gpu/bus/arch/hopper/kern_bus_gh100.c
++++ b/src/nvidia/src/kernel/gpu/bus/arch/hopper/kern_bus_gh100.c
+@@ -1468,11 +1468,14 @@ _kbusCreateStaticBar1IOMMUMapping
+     memdescGetPhysAddrsForGpu(pPeerDmaMemDesc, pSrcGpu,
+                               AT_GPU, 0, 0, 1, &peerDmaAddr);
+ 
+-    // Check the if it is aligned to max RM_PAGE_SIZE 512M.
+-    if (!NV_IS_ALIGNED64(peerDmaAddr, RM_PAGE_SIZE_512M))
++    // Ampere static BAR1 mapping uses 2MB (HUGE) pages, not 512M (Hopper-only feature).
++    // On iGPU-less boards a GPU is forced to host the boot console, reserving the first
++    // ~24MB of its BAR1; that offset is 2MB-aligned but not 512M-aligned. Require only
++    // RM_PAGE_SIZE_HUGE alignment to match the page size the static mapping actually uses.
++    if (!NV_IS_ALIGNED64(peerDmaAddr, RM_PAGE_SIZE_HUGE))
+     {
+         NV_PRINTF(LEVEL_ERROR, "The peer DMA address 0x%llx is not aligned at 0x%llx\n",
+-                               peerDmaAddr, RM_PAGE_SIZE_512M);
++                               peerDmaAddr, RM_PAGE_SIZE_HUGE);
+ 
+         memdescUnmapIommu(pPeerDmaMemDesc, pSrcGpu->busInfo.iovaspaceId);
+ 
+diff --git a/src/nvidia/src/kernel/rmapi/nv_gpu_ops.c b/src/nvidia/src/kernel/rmapi/nv_gpu_ops.c
+index 9fc197d6..b3d0e741 100644
+--- a/src/nvidia/src/kernel/rmapi/nv_gpu_ops.c
++++ b/src/nvidia/src/kernel/rmapi/nv_gpu_ops.c
+@@ -4396,7 +4396,12 @@ NV_STATUS nvGpuOpsGetExternalAllocPtesOrPhysAddrs(struct gpuAddressSpace *vaSpac
+             if (status != NV_OK)
+                 goto freeGpaMemdesc;
+ 
+-            bar1BusAddr = gpumgrGetGpuPhysFbAddr(pAdjustedMemDesc->pGpu);
++            // The peer's static BAR1 VRAM mapping may begin at a non-zero BAR1 offset
++            // when that GPU hosts the boot console (e.g. iGPU-less boards reserve the
++            // first ~24MB of BAR1). gpumgrGetGpuPhysFbAddr() returns the BAR1 base only,
++            // so add staticBar1.startOffset or peer writes land shifted by that amount.
++            bar1BusAddr = gpumgrGetGpuPhysFbAddr(pAdjustedMemDesc->pGpu) +
++                          GPU_GET_KERNEL_BUS(pAdjustedMemDesc->pGpu)->bar1[GPU_GFID_PF].staticBar1.startOffset;
+         }
+ 
+         //
