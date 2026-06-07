@@ -7,9 +7,11 @@ metadata:
   originSessionId: 5c578003-dad0-4adc-9c19-d99a5f5c2043
 ---
 
-PCIe P2P is enabled and **data-verified** between the 2x RTX 3090 on host `rtx` (ASUS PRIME X299-A II, i9-10900X, no iGPU/BMC). Done 2026-05-31. See [[rtx-hardware-monitoring]], [[rtx-gpu-vbios]].
+PCIe P2P is enabled and **data-verified** between the 2x RTX 3090 on host `rtx`. Done 2026-05-31. See [[rtx-hardware-monitoring]], [[rtx-gpu-vbios]].
 
-**Why P2P at all:** no NVLink bridge (can't buy one), 2 cards on separate CPU PCIe host bridges (`nvidia-smi topo` = NODE: bus 17 via bridge 16, bus 65 via bridge 64). Result: GPU0↔GPU1 ~10.3 GB/s each way, roundtrip bit-exact. Real BAR1 P2P, not host-staged.
+**CURRENT board (since 2026-06-01): Gigabyte TRX40 AORUS PRO WIFI + AMD Threadripper 3960X (PCIe 4.0).** The same patched driver module just worked after the board swap (kernel module is board-independent) — no re-patch needed. P2P verified bit-exact both ways at **~26 GB/s** (full PCIe 4.0 x16; AMD routes P2P far better than Intel). GPUs at `0000:21:00.0` and `0000:48:00.0`. `nvidia-smi topo -p2p rw` = OK. On AMD the cmdline should be `amd_iommu=on iommu=pt` (currently still says `intel_iommu=on iommu=pt` which AMD ignores — works because generic `iommu=pt` applies; tidy up when convenient). `pci=realloc=on` not needed on TRX40 (both BARs allocate fine) but harmless. Threadripper is also iGPU-less so GPU0 still hosts the console → the two code fixes below are STILL required.
+
+**Previous board (X299, for history): ASUS PRIME X299-A II, i9-10900X, no iGPU.** No NVLink bridge (can't buy one); 2 cards on separate CPU PCIe host bridges (`nvidia-smi topo` = NODE). There P2P ran ~10.3 GB/s (PCIe 3.0). Needed `intel_iommu=on iommu=pt pci=realloc=on` (the latter to assign the 2nd GPU's BAR0 after ReBAR). Real BAR1 P2P, not host-staged.
 
 **Working config (all required):**
 - Kernel **6.8.0-124-generic** (GRUB default pinned to it). The tinygrad/aikitoria patch will NOT build on kernel ≥6.13 (the `$(src)` Kbuild change → "os-interface.h not found"); 6.8 is fine. 6.17 still installed as fallback (GPU won't work there — userspace is 570).

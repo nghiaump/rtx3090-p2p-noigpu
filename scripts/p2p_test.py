@@ -41,9 +41,14 @@ print(f"\n[3] P2P bandwidth (1GiB/transfer):")
 print(f"    GPU0 -> GPU1 : {gb01:5.1f} GB/s")
 print(f"    GPU1 -> GPU0 : {gb10:5.1f} GB/s")
 
-# PCIe link state under load
+# PCIe link state under load (auto-detect GPU PCI addrs — board-independent)
 import subprocess
-for g in ('0000:17:00.0', '0000:65:00.0'):
+try:
+    out = subprocess.check_output(['nvidia-smi','--query-gpu=pci.bus_id','--format=csv,noheader']).decode().split()
+    addrs = ['0000:' + b.strip().split(':',1)[1] for b in out]  # 00000000:21:00.0 -> 0000:21:00.0
+except Exception:
+    addrs = []
+for g in addrs:
     try:
         sp = open(f'/sys/bus/pci/devices/{g}/current_link_speed').read().strip()
         wd = open(f'/sys/bus/pci/devices/{g}/current_link_width').read().strip()
